@@ -165,7 +165,7 @@ self.onmessage = (e: MessageEvent) => {
         channel.port1.postMessage(null);
       };
 
-      loop();
+      channel.port1.postMessage(null);
       break;
     }
     case 'stop':
