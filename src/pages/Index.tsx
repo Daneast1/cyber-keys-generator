@@ -121,7 +121,7 @@ export default function Index() {
         <div className="flex justify-center">
           <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
             <button
-              onClick={() => { setNetwork('btc'); setPrefix(''); }}
+              onClick={() => { setNetwork('btc'); setPrefix(''); setSuffix(''); }}
               className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
                 network === 'btc'
                   ? 'bg-primary text-primary-foreground glow-mint'
@@ -131,7 +131,7 @@ export default function Index() {
               ₿ Bitcoin
             </button>
             <button
-              onClick={() => { setNetwork('eth'); setPrefix(''); }}
+              onClick={() => { setNetwork('eth'); setPrefix(''); setSuffix(''); }}
               className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
                 network === 'eth'
                   ? 'bg-secondary text-secondary-foreground glow-blue'
