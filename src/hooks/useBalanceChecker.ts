@@ -6,19 +6,15 @@ type BalanceState = {
   error: boolean;
 };
 
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = 3;
 
 export function useBalanceChecker() {
   const [balances, setBalances] = useState<Map<string, BalanceState>>(new Map());
   const queueRef = useRef<{ address: string; network: 'btc' | 'eth' }[]>([]);
   const activeRef = useRef(0);
-  const processingRef = useRef(false);
 
-  const processQueue = useCallback(async () => {
-    if (processingRef.current) return;
-    processingRef.current = true;
-
-    while (queueRef.current.length > 0 && activeRef.current < MAX_CONCURRENT) {
+  const drain = useCallback(() => {
+    while (activeRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
       const item = queueRef.current.shift()!;
       activeRef.current++;
 
@@ -28,13 +24,11 @@ export function useBalanceChecker() {
         return next;
       });
 
-      // Fire and forget — don't await, so we can launch multiple concurrently
       (async () => {
         try {
           const balance = item.network === 'eth'
             ? await fetchEthBalance(item.address)
             : await fetchBtcBalance(item.address);
-
           setBalances(prev => {
             const next = new Map(prev);
             next.set(item.address, { value: balance, loading: false, error: false });
@@ -47,21 +41,16 @@ export function useBalanceChecker() {
             return next;
           });
         }
-
         activeRef.current--;
-        // Kick the queue again after one completes
-        processingRef.current = false;
-        processQueue();
+        drain();
       })();
     }
-
-    processingRef.current = false;
   }, []);
 
   const checkBalance = useCallback((address: string, network: 'btc' | 'eth') => {
     queueRef.current.push({ address, network });
-    processQueue();
-  }, [processQueue]);
+    drain();
+  }, [drain]);
 
   const getBalance = useCallback((address: string): BalanceState => {
     return balances.get(address) || { value: null, loading: false, error: false };
@@ -104,12 +93,10 @@ const ETH_RPC_ENDPOINTS = [
   'https://rpc.ankr.com/eth',
   'https://ethereum-rpc.publicnode.com',
   'https://1rpc.io/eth',
-  'https://eth-mainnet.public.blastapi.io',
 ];
 
 async function fetchEthBalance(address: string): Promise<string> {
   const errors: string[] = [];
-
   for (const endpoint of ETH_RPC_ENDPOINTS) {
     try {
       return await tryJsonRpc(endpoint, address);
@@ -117,14 +104,12 @@ async function fetchEthBalance(address: string): Promise<string> {
       errors.push(`${endpoint}: ${e}`);
     }
   }
-
   throw new Error(`All ETH providers failed: ${errors.join('; ')}`);
 }
 
 async function fetchBtcBalance(address: string): Promise<string> {
   const errors: string[] = [];
 
-  // Provider 1: Blockchain.info
   try {
     const res = await fetchWithTimeout(`https://blockchain.info/q/addressbalance/${address}?confirmations=1`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -135,7 +120,6 @@ async function fetchBtcBalance(address: string): Promise<string> {
     errors.push(`Blockchain.info: ${e}`);
   }
 
-  // Provider 2: Blockstream
   try {
     const res = await fetchWithTimeout(`https://blockstream.info/api/address/${address}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -145,18 +129,6 @@ async function fetchBtcBalance(address: string): Promise<string> {
     return formatSatoshiToBtc(funded - spent);
   } catch (e) {
     errors.push(`Blockstream: ${e}`);
-  }
-
-  // Provider 3: Blockcypher
-  try {
-    const res = await fetchWithTimeout(`https://api.blockcypher.com/v1/btc/main/addrs/${address}/balance`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    const satoshis = BigInt(data.balance);
-    return formatSatoshiToBtc(satoshis);
-  } catch (e) {
-    errors.push(`Blockcypher: ${e}`);
   }
 
   throw new Error(`All BTC providers failed: ${errors.join('; ')}`);
