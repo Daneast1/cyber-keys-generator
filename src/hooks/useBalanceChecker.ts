@@ -7,65 +7,50 @@ type BalanceState = {
 };
 
 const MAX_CONCURRENT = 3;
-const DELAY_MS = 500;
 
 export function useBalanceChecker() {
   const [balances, setBalances] = useState<Map<string, BalanceState>>(new Map());
   const queueRef = useRef<{ address: string; network: 'btc' | 'eth' }[]>([]);
   const activeRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scheduleNext = useCallback(() => {
-    if (timerRef.current) return;
-    if (activeRef.current >= MAX_CONCURRENT || queueRef.current.length === 0) return;
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      processNext();
-    }, DELAY_MS);
-  }, []);
-
-  const processNext = useCallback(async () => {
-    if (activeRef.current >= MAX_CONCURRENT || queueRef.current.length === 0) return;
-
-    const item = queueRef.current.shift()!;
-    activeRef.current++;
-
-    setBalances(prev => {
-      const next = new Map(prev);
-      next.set(item.address, { value: null, loading: true, error: false });
-      return next;
-    });
-
-    try {
-      const balance = item.network === 'eth'
-        ? await fetchEthBalance(item.address)
-        : await fetchBtcBalance(item.address);
+  const drain = useCallback(() => {
+    while (activeRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
+      const item = queueRef.current.shift()!;
+      activeRef.current++;
 
       setBalances(prev => {
         const next = new Map(prev);
-        next.set(item.address, { value: balance, loading: false, error: false });
+        next.set(item.address, { value: null, loading: true, error: false });
         return next;
       });
-    } catch {
-      setBalances(prev => {
-        const next = new Map(prev);
-        next.set(item.address, { value: null, loading: false, error: true });
-        return next;
-      });
+
+      (async () => {
+        try {
+          const balance = item.network === 'eth'
+            ? await fetchEthBalance(item.address)
+            : await fetchBtcBalance(item.address);
+          setBalances(prev => {
+            const next = new Map(prev);
+            next.set(item.address, { value: balance, loading: false, error: false });
+            return next;
+          });
+        } catch {
+          setBalances(prev => {
+            const next = new Map(prev);
+            next.set(item.address, { value: null, loading: false, error: true });
+            return next;
+          });
+        }
+        activeRef.current--;
+        drain();
+      })();
     }
-
-    activeRef.current--;
-    scheduleNext();
-  }, [scheduleNext]);
+  }, []);
 
   const checkBalance = useCallback((address: string, network: 'btc' | 'eth') => {
     queueRef.current.push({ address, network });
-    if (activeRef.current < MAX_CONCURRENT) {
-      processNext();
-    } else {
-      scheduleNext();
-    }
-  }, [processNext, scheduleNext]);
+    drain();
+  }, [drain]);
 
   const getBalance = useCallback((address: string): BalanceState => {
     return balances.get(address) || { value: null, loading: false, error: false };
@@ -74,90 +59,57 @@ export function useBalanceChecker() {
   return { checkBalance, getBalance };
 }
 
-async function fetchWithTimeout(url: string, options?: RequestInit, ms = 8000): Promise<Response> {
+async function fetchWithTimeout(url: string, options?: RequestInit, ms = 6000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
+async function tryJsonRpc(url: string, address: string): Promise<string> {
+  const res = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'eth_getBalance',
+      params: [address, 'latest'],
+      id: 1,
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  if (!data.result) throw new Error('No result');
+  const wei = BigInt(data.result);
+  return formatWeiToEth(wei);
+}
+
+const ETH_RPC_ENDPOINTS = [
+  'https://eth.llamarpc.com',
+  'https://rpc.ankr.com/eth',
+  'https://ethereum-rpc.publicnode.com',
+  'https://1rpc.io/eth',
+];
+
 async function fetchEthBalance(address: string): Promise<string> {
   const errors: string[] = [];
-
-  // Provider 1: Cloudflare ETH gateway (free, no key)
-  try {
-    const res = await fetchWithTimeout('https://cloudflare-eth.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-        id: 1,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    const wei = BigInt(data.result);
-    return formatWeiToEth(wei);
-  } catch (e) {
-    errors.push(`Cloudflare: ${e}`);
+  for (const endpoint of ETH_RPC_ENDPOINTS) {
+    try {
+      return await tryJsonRpc(endpoint, address);
+    } catch (e) {
+      errors.push(`${endpoint}: ${e}`);
+    }
   }
-
-  // Provider 2: Ankr public RPC (free, no key)
-  try {
-    const res = await fetchWithTimeout('https://rpc.ankr.com/eth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-        id: 1,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    const wei = BigInt(data.result);
-    return formatWeiToEth(wei);
-  } catch (e) {
-    errors.push(`Ankr: ${e}`);
-  }
-
-  // Provider 3: PublicNode (free, no key)
-  try {
-    const res = await fetchWithTimeout('https://ethereum-rpc.publicnode.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-        id: 1,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    const wei = BigInt(data.result);
-    return formatWeiToEth(wei);
-  } catch (e) {
-    errors.push(`PublicNode: ${e}`);
-  }
-
-  throw new Error(`All providers failed: ${errors.join('; ')}`);
+  throw new Error(`All ETH providers failed: ${errors.join('; ')}`);
 }
 
 async function fetchBtcBalance(address: string): Promise<string> {
   const errors: string[] = [];
 
-  // Provider 1: Blockchain.info (free, no key)
   try {
     const res = await fetchWithTimeout(`https://blockchain.info/q/addressbalance/${address}?confirmations=1`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -168,7 +120,6 @@ async function fetchBtcBalance(address: string): Promise<string> {
     errors.push(`Blockchain.info: ${e}`);
   }
 
-  // Provider 2: Blockstream (free, no key)
   try {
     const res = await fetchWithTimeout(`https://blockstream.info/api/address/${address}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -180,19 +131,7 @@ async function fetchBtcBalance(address: string): Promise<string> {
     errors.push(`Blockstream: ${e}`);
   }
 
-  // Provider 3: Blockcypher
-  try {
-    const res = await fetchWithTimeout(`https://api.blockcypher.com/v1/btc/main/addrs/${address}/balance`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    const satoshis = BigInt(data.balance);
-    return formatSatoshiToBtc(satoshis);
-  } catch (e) {
-    errors.push(`Blockcypher: ${e}`);
-  }
-
-  throw new Error(`All providers failed: ${errors.join('; ')}`);
+  throw new Error(`All BTC providers failed: ${errors.join('; ')}`);
 }
 
 function formatWeiToEth(wei: bigint): string {
