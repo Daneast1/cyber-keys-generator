@@ -128,7 +128,7 @@ export default function Index() {
         <div className="flex justify-center">
           <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
             <button
-              onClick={() => { setNetwork('btc'); setPrefix(''); setSuffix(''); }}
+              onClick={() => { setNetwork('btc'); setPrefix(''); setSuffix(''); setTargetAddress(''); }}
               className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
                 network === 'btc'
                   ? 'bg-primary text-primary-foreground glow-mint'
@@ -138,7 +138,7 @@ export default function Index() {
               ₿ Bitcoin
             </button>
             <button
-              onClick={() => { setNetwork('eth'); setPrefix(''); setSuffix(''); }}
+              onClick={() => { setNetwork('eth'); setPrefix(''); setSuffix(''); setTargetAddress(''); }}
               className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
                 network === 'eth'
                   ? 'bg-secondary text-secondary-foreground glow-blue'
@@ -160,7 +160,7 @@ export default function Index() {
                 {BTC_TYPES.map(t => (
                   <button
                     key={t.value}
-                    onClick={() => { setBtcType(t.value); setPrefix(''); setSuffix(''); }}
+                    onClick={() => { setBtcType(t.value); setPrefix(''); setSuffix(''); setTargetAddress(''); }}
                     className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
                       btcType === t.value
                         ? 'bg-primary/20 text-primary border border-primary/30'
