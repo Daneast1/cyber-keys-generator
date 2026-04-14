@@ -288,7 +288,7 @@ export default function Index() {
             {!gen.isRunning ? (
               <button
                 onClick={handleStart}
-                disabled={!hasPattern || !prefixValid || !suffixValid}
+                disabled={!hasPattern || (!targetAddress && (!prefixValid || !suffixValid))}
                 className={`flex-1 py-3 rounded-lg font-semibold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
                   isMint
                     ? 'bg-primary text-primary-foreground hover:opacity-90 glow-mint'
