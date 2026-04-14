@@ -237,14 +237,38 @@ export default function Index() {
             </div>
           </div>
 
-          {network === 'eth' && (prefix || suffix) && (
+          {/* Target Address */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Target Address <span className="normal-case font-normal">(optional — overrides prefix/suffix)</span>
+            </label>
+            <input
+              type="text"
+              value={targetAddress}
+              onChange={e => setTargetAddress(e.target.value.trim())}
+              placeholder={network === 'eth' ? '0x742d35Cc6634C0532925a3b844Bc9e7595f...' : currentType.prefix + '...'}
+              disabled={gen.isRunning}
+              className={`w-full bg-background border rounded-md px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 transition-all ${
+                isMint
+                  ? 'border-border focus:ring-primary/50'
+                  : 'border-border focus:ring-secondary/50'
+              }`}
+            />
+            {targetAddress && (
+              <p className="text-muted-foreground text-xs">
+                🎯 Target mode: only this exact address will appear in results when found.
+              </p>
+            )}
+          </div>
+
+          {network === 'eth' && (prefix || suffix) && !targetAddress && (
             <p className="text-muted-foreground text-xs">
               Note: Hex matching is case-insensitive. EIP-55 checksum applied after match.
             </p>
           )}
 
           {/* Difficulty Display */}
-          {hasPattern && prefixValid && suffixValid && (
+          {hasPattern && prefixValid && suffixValid && !targetAddress && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat label="Search Space" value={diff.display} />
               <Stat label="Charset" value={`${charsetSize} chars`} />
