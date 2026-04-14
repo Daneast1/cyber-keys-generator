@@ -277,7 +277,7 @@ export default function Index() {
             </div>
           )}
 
-          {showDifficultyWarning && (
+          {showDifficultyWarning && !targetAddress && (
             <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-xs text-destructive">
               ⚠️ Combined pattern of {totalPatternLen}+ characters may take extremely long. Consider shorter values.
             </div>
