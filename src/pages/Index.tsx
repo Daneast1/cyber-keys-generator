@@ -88,11 +88,17 @@ export default function Index() {
 
   const prefixValid = validateChars(prefix);
   const suffixValid = validateChars(suffix);
-  const hasPattern = prefix.length > 0 || suffix.length > 0;
+  const hasPattern = prefix.length > 0 || suffix.length > 0 || targetAddress.length > 0;
 
   const handleStart = () => {
-    if (!hasPattern || !prefixValid || !suffixValid) return;
-    gen.start({ network, prefix, suffix, addressType: network === 'btc' ? btcType : 'eth' });
+    if (!hasPattern || (!targetAddress && (!prefixValid || !suffixValid))) return;
+    gen.start({
+      network,
+      prefix: targetAddress ? '' : prefix,
+      suffix: targetAddress ? '' : suffix,
+      addressType: network === 'btc' ? btcType : 'eth',
+      targetAddress: targetAddress || undefined,
+    });
   };
 
   const showDifficultyWarning = totalPatternLen >= 6;
