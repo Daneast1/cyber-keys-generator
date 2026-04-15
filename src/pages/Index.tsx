@@ -52,40 +52,7 @@ export default function Index() {
   const gen = useVanityGenerator();
   const isMint = network === 'btc';
 
-  // ── Entropy Collection ────────────────────────────────────────────────────
-  // Mouse and keyboard events are collected in a buffer and flushed to workers
-  // every 64 events. This genuinely adds entropy to the key generation pool.
-  const flushEntropy = useCallback(() => {
-    if (entropyBuffer.current.length === 0) return;
-    const data = new Uint8Array(entropyBuffer.current.map(v => v & 0xff));
-    gen.injectEntropy(data.buffer);
-    setEntropyCount(prev => prev + entropyBuffer.current.length);
-    entropyBuffer.current = [];
-  }, [gen]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    // Mix position + timing for unpredictability
-    entropyBuffer.current.push(
-      (e.clientX ^ e.clientY ^ (Date.now() & 0xff)) & 0xff
-    );
-    if (entropyBuffer.current.length >= 64) flushEntropy();
-  }, [flushEntropy]);
-
-  const handleKeyPress = useCallback((e: KeyboardEvent) => {
-    entropyBuffer.current.push(
-      (e.keyCode ^ (Date.now() & 0xff)) & 0xff
-    );
-    if (entropyBuffer.current.length >= 16) flushEntropy();
-  }, [flushEntropy]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('keydown', handleKeyPress);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [handleMouseMove, handleKeyPress]);
+  // Entropy is now only injected manually via the input box below.
 
   // ── Security Console Certification ───────────────────────────────────────
   useEffect(() => {
