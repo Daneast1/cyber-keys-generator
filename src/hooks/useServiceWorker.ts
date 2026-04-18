@@ -13,6 +13,24 @@ export function useServiceWorker(isRunning: boolean) {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
+    const hostname = window.location.hostname;
+    const isPreviewHost =
+      hostname.includes('lovableproject.com') ||
+      hostname.includes('preview--') ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1';
+
+    if (isPreviewHost) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.unregister());
+      });
+      caches.keys().then((keys) => {
+        keys.forEach((key) => caches.delete(key));
+      });
+      console.log('[VanityGen] Service Worker disabled on preview/dev host to avoid stale builds');
+      return;
+    }
+
     navigator.serviceWorker
       .register('/service-worker.js', { scope: '/' })
       .then(registration => {

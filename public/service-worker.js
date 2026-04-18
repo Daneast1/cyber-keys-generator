@@ -2,7 +2,13 @@
 // Keeps the app alive in background tabs by intercepting fetch and
 // maintaining a keep-alive heartbeat so the browser doesn't freeze Workers.
 
-const CACHE_NAME = 'vanity-gen-v1';
+const CACHE_NAME = 'vanity-gen-v2';
+const HOSTNAME = self.location.hostname;
+const DISABLE_ON_PREVIEW =
+  HOSTNAME.includes('lovableproject.com') ||
+  HOSTNAME.includes('preview--') ||
+  HOSTNAME === 'localhost' ||
+  HOSTNAME === '127.0.0.1';
 
 // Files to cache for full offline / air-gap capability
 const PRECACHE_URLS = [
@@ -12,6 +18,11 @@ const PRECACHE_URLS = [
 
 // ── Install: pre-cache the shell ────────────────────────────────────────────
 self.addEventListener('install', (event) => {
+  if (DISABLE_ON_PREVIEW) {
+    self.skipWaiting();
+    return;
+  }
+
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS))
   );
@@ -21,6 +32,19 @@ self.addEventListener('install', (event) => {
 
 // ── Activate: clean up old caches ───────────────────────────────────────────
 self.addEventListener('activate', (event) => {
+  if (DISABLE_ON_PREVIEW) {
+    event.waitUntil(
+      caches.keys().then(keys =>
+        Promise.all([
+          ...keys.map(key => caches.delete(key)),
+          self.registration.unregister(),
+        ])
+      )
+    );
+    self.clients.claim();
+    return;
+  }
+
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
@@ -37,7 +61,17 @@ self.addEventListener('activate', (event) => {
 // ── Fetch: serve from cache, fall back to network ───────────────────────────
 // This is what enables full offline / air-gap mode once loaded
 self.addEventListener('fetch', (event) => {
+  if (DISABLE_ON_PREVIEW) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   const url = new URL(event.request.url);
+
+  const isNavigationRequest =
+    event.request.mode === 'navigate' ||
+    event.request.destination === 'document' ||
+    (event.request.headers.get('accept') || '').includes('text/html');
 
   // Don't intercept balance checker API calls — let those go to network
   const isExternalApi =
@@ -52,6 +86,21 @@ self.addEventListener('fetch', (event) => {
   if (isExternalApi) {
     // Pass through external API calls without caching
     event.respondWith(fetch(event.request));
+    return;
+  }
+
+  if (isNavigationRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.status === 200) {
+            const toCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, toCache));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    );
     return;
   }
 
