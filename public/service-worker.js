@@ -2,7 +2,7 @@
 // Keeps the app alive in background tabs by intercepting fetch and
 // maintaining a keep-alive heartbeat so the browser doesn't freeze Workers.
 
-const CACHE_NAME = 'vanity-gen-v1';
+const CACHE_NAME = 'vanity-gen-v2';
 
 // Files to cache for full offline / air-gap capability
 const PRECACHE_URLS = [
@@ -39,6 +39,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  const isNavigationRequest =
+    event.request.mode === 'navigate' ||
+    event.request.destination === 'document' ||
+    (event.request.headers.get('accept') || '').includes('text/html');
+
   // Don't intercept balance checker API calls — let those go to network
   const isExternalApi =
     url.hostname.includes('blockchain.info') ||
@@ -52,6 +57,21 @@ self.addEventListener('fetch', (event) => {
   if (isExternalApi) {
     // Pass through external API calls without caching
     event.respondWith(fetch(event.request));
+    return;
+  }
+
+  if (isNavigationRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.status === 200) {
+            const toCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, toCache));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    );
     return;
   }
 
